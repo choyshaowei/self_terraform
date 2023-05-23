@@ -1,12 +1,30 @@
 provider "aws" {
-  region     = process.environment.region
-  access_key = process.environment.access_key
-  secret_key = process.environment.secret_key
+  region     = var.AWS_REGION
+  access_key = var.AWS_ACCESS_KEY_ID
+  secret_key = var.AWS_SECRET_ACCESS_KEY
 }
+
 
 resource "aws_instance" "terraform" {
   ami           = "ami-052f483c20fa1351a"
   instance_type = "t2.micro"
+}
+variable "AWS_REGION" {
+  description = "aws-region"
+  default     = "ap-southeast-1"
+  type        = string
+}
+variable "AWS_ACCESS_KEY_ID" {
+  description = "aws-key"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+variable "AWS_SECRET_ACCESS_KEY" {
+  description = "aws-secret"
+  type        = string
+  sensitive   = true
+  default     = ""
 }
 
 
