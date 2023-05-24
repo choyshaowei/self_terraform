@@ -3,6 +3,12 @@ variable "AWS_REGION" {
   default     = "ap-southeast-1"
   type        = string
 }
+variable "AWS_ACCOUNT_ID" {
+  description = "aws-account-id"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
 variable "AWS_ACCESS_KEY_ID" {
   description = "aws-key"
   type        = string
@@ -21,6 +27,14 @@ variable "GITHUB_TOKEN" {
   sensitive   = true
   default     = ""
 }
+variable "env_vars" {
+  default = {
+    AWS_REGION     = "ap-southeast-1"
+    AWS_ACCOUNT_ID = "640940679593"
+    PROJECT        = "foododo-landing"
+  }
+}
+
 provider "aws" {
   region     = var.AWS_REGION
   access_key = var.AWS_ACCESS_KEY_ID
@@ -144,7 +158,6 @@ resource "aws_codepipeline" "pipeline" {
       input_artifacts  = ["source_output"]
       output_artifacts = ["build_output"]
       version          = "1"
-
       configuration = {
         ProjectName = aws_codebuild_project.foododo_landing.name
       }
@@ -186,6 +199,13 @@ resource "aws_codebuild_project" "foododo_landing" {
     type                        = "LINUX_CONTAINER"
     privileged_mode             = true
     image_pull_credentials_type = "CODEBUILD"
+    dynamic "environment_variable" {
+      for_each = var.env_vars
+      content {
+        name  = environment_variable.key
+        value = environment_variable.value
+      }
+    }
   }
 
   artifacts {
@@ -238,7 +258,15 @@ resource "aws_iam_role" "codebuild" {
     Version = "2012-10-17"
     Statement = [
       {
-        Action = "sts:AssumeRole"
+        Action = [
+          "ecr:GetAuthorizationToken",
+          "sts:AssumeRole",
+          "s3:GetObject",
+          "s3:PutObject",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
         Effect = "Allow"
         Principal = {
           Service = "codebuild.amazonaws.com"
@@ -271,3 +299,35 @@ resource "aws_iam_role_policy" "codebuild" {
     ]
   })
 }
+
+# ECR
+module "ecr" {
+  source          = "terraform-aws-modules/ecr/aws"
+  repository_name = "foododo-landing"
+
+  repository_read_write_access_arns = ["arn:aws:iam::012345678901:role/terraform"]
+  repository_lifecycle_policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1,
+        description  = "Keep last 10 images",
+        selection = {
+          tagStatus     = "tagged",
+          tagPrefixList = ["v"],
+          countType     = "imageCountMoreThan",
+          countNumber   = 10
+
+        },
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
+}
+
