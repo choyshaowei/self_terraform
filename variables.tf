@@ -36,6 +36,6 @@ variable "env_vars" {
   default = {
     AWS_REGION     = "ap-southeast-1"
     AWS_ACCOUNT_ID = "640940679593"
-    PROJECT        = "foododo-landing"
+    PROJECT        = "foododo"
   }
 }

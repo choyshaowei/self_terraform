@@ -16,11 +16,10 @@ resource "aws_s3_bucket_acl" "example" {
   acl        = "private"
 }
 
-resource "aws_codestarconnections_connection" "example" {
+resource "aws_codestarconnections_connection" "github" {
   name          = "personal-github"
   provider_type = "GitHub"
 }
-
 resource "aws_codepipeline" "pipeline" {
   name     = "foododo-pipeline"
   role_arn = aws_iam_role.pipeline.arn
@@ -29,22 +28,43 @@ resource "aws_codepipeline" "pipeline" {
     location = aws_s3_bucket.foododo.bucket
     type     = "S3"
   }
+  # #  Source using codestar connection
+  # stage {
+  #   name = "Source"
+  #   action {
+  #     name             = "Source"
+  #     category         = "Source"
+  #     owner            = "AWS"
+  #     provider         = "CodeStarSourceConnection"
+  #     version          = "1"
+  #     output_artifacts = ["source_output"]
+  #     configuration = {
+  #       ConnectionArn    = aws_codestarconnections_connection.github.arn
+  #       FullRepositoryId = "choyshaowei/foododo_landing"
+  #       BranchName       = "master"
+  #     }
+  #   }
+  # }
+  #  Source using github connection
   stage {
     name = "Source"
     action {
       name             = "Source"
       category         = "Source"
-      owner            = "AWS"
-      provider         = "CodeStarSourceConnection"
+      owner            = "ThirdParty"
+      provider         = "GitHub"
       version          = "1"
       output_artifacts = ["source_output"]
       configuration = {
-        ConnectionArn    = aws_codestarconnections_connection.example.arn
-        FullRepositoryId = "choyshaowei/foododo_landing"
-        BranchName       = "master"
+        Owner                = "choyshaowei"
+        Repo                 = "foododo_landing"
+        Branch               = "master"
+        OAuthToken           = var.GITHUB_TOKEN
+        PollForSourceChanges = true
       }
     }
   }
+
   stage {
     name = "Build"
 
@@ -140,13 +160,20 @@ resource "aws_iam_role_policy" "pipeline" {
           "s3:GetObject",
           "s3:PutObject",
           "s3:ListBucket",
-          "codebuild:StartBuild"
+          "codebuild:StartBuild",
+          "codebuild:BatchGetBuilds"
         ]
         Effect   = "Allow"
         Resource = "*"
       },
     ]
   })
+}
+
+# Attach necessary policies to CodePipeline IAM role
+resource "aws_iam_role_policy_attachment" "pipeline" {
+  policy_arn = "arn:aws:iam::aws:policy/AWSCodeStarFullAccess"
+  role       = aws_iam_role.pipeline.name
 }
 resource "aws_iam_role" "codebuild" {
   name = "aws_iam_role_codebuild"
@@ -155,15 +182,7 @@ resource "aws_iam_role" "codebuild" {
     Version = "2012-10-17"
     Statement = [
       {
-        Action = [
-          "ecr:GetAuthorizationToken",
-          "sts:AssumeRole",
-          "s3:GetObject",
-          "s3:PutObject",
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
+        Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
           Service = "codebuild.amazonaws.com"
@@ -172,6 +191,51 @@ resource "aws_iam_role" "codebuild" {
     ]
   })
 }
+
+resource "aws_iam_role" "ecr_role" {
+  name = "ecrRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      },
+    ]
+  })
+}
+
+
+# ECR
+resource "aws_iam_role_policy" "ecr_policy" {
+  name = "ecrPolicy"
+  role = aws_iam_role.ecr_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
+        ]
+        Effect   = "Allow"
+        Resource = "*"
+      },
+    ]
+  })
+}
+
+
 resource "aws_iam_role_policy" "codebuild" {
   name = "aws_iam_role_policy_codebuild"
   role = aws_iam_role.codebuild.id
@@ -186,7 +250,15 @@ resource "aws_iam_role_policy" "codebuild" {
           "s3:ListBucket",
           "logs:CreateLogGroup",
           "logs:CreateLogStream",
-          "logs:PutLogEvents"
+          "logs:PutLogEvents",
+          "ecr:GetAuthorizationToken",
+          "ecr:PutImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer"
         ]
         Effect   = "Allow"
         Resource = "*"
@@ -195,12 +267,12 @@ resource "aws_iam_role_policy" "codebuild" {
   })
 }
 
-# ECR
 module "ecr" {
   source          = "terraform-aws-modules/ecr/aws"
   repository_name = "foododo"
 
-  repository_read_write_access_arns = ["arn:aws:iam::012345678901:role/terraform"]
+
+  repository_read_write_access_arns = [aws_iam_role.ecr_role.arn]
   repository_lifecycle_policy = jsonencode({
     rules = [
       {
@@ -211,7 +283,6 @@ module "ecr" {
           tagPrefixList = ["v"],
           countType     = "imageCountMoreThan",
           countNumber   = 5
-
         },
         action = {
           type = "expire"
@@ -225,4 +296,5 @@ module "ecr" {
     Environment = "dev"
   }
 }
+
 
