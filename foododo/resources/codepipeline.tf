@@ -93,7 +93,7 @@ resource "aws_codepipeline" "pipeline" {
       version         = "1"
       configuration = {
         ClusterName = aws_ecs_cluster.ecs_cluster.name
-        ServiceName = aws_ecs_service.ecs_service.name
+        ServiceName = aws_ecs_service.foododo_terraform_landing_fargate_service.name
         FileName    = "imagedefinitions.json"
       }
     }
@@ -119,7 +119,7 @@ resource "aws_codebuild_project" "foododo" {
     privileged_mode             = true
     image_pull_credentials_type = "CODEBUILD"
     dynamic "environment_variable" {
-      for_each = var.env_vars
+      for_each = local.CODEBUILD_ENV_VARS
       content {
         name  = environment_variable.key
         value = environment_variable.value

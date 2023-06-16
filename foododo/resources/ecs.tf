@@ -16,6 +16,11 @@ resource "aws_ecs_cluster" "ecs_cluster" {
       logging = "DEFAULT"
     }
   }
+
+  tags = {
+    name       = "aws_ecs_cluster ecs_cluster"
+    managed_by = "terraform"
+  }
 }
 
 resource "aws_ecs_cluster_capacity_providers" "example" {
@@ -91,7 +96,6 @@ resource "aws_security_group" "ecs_security_group" {
   }
 }
 
-# IAM Role
 resource "aws_iam_role" "ecs_task_execution_role" {
   name = "ecs_task_execution_role"
 
@@ -109,9 +113,39 @@ resource "aws_iam_role" "ecs_task_execution_role" {
   })
 }
 
+# IAM Policy
+data "aws_iam_policy_document" "ecs_task_execution_policy" {
+  statement {
+    actions = [
+      "ecr:GetAuthorizationToken",
+      "ecr:BatchCheckLayerAvailability",
+      "ecr:GetDownloadUrlForLayer",
+      "ecr:BatchGetImage",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents",
+    ]
+
+    resources = ["*"]
+  }
+}
+
+# IAM Role Policy Attachment
+resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy_attach" {
+  role       = aws_iam_role.ecs_task_execution_role.name
+  policy_arn = aws_iam_policy.ecs_task_execution_policy.arn
+}
+
+# IAM Policy
+resource "aws_iam_policy" "ecs_task_execution_policy" {
+  name        = "ecs_task_execution_policy"
+  description = "Policy that allows ECS to pull images and send logs to CloudWatch"
+  policy      = data.aws_iam_policy_document.ecs_task_execution_policy.json
+}
+
+
 # Task Definition
-resource "aws_ecs_task_definition" "task_def" {
-  family                   = "service_family"
+resource "aws_ecs_task_definition" "foododo_terraform_landing_fargate" {
+  family                   = "${var.PROJECT}-landing-fargate"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "256"
@@ -120,8 +154,8 @@ resource "aws_ecs_task_definition" "task_def" {
 
   container_definitions = jsonencode([
     {
-      name      = "your_container_name"
-      image     = "${var.AWS_ACCOUNT_ID}.dkr.ecr.${var.AWS_REGION}.amazonaws.com/${var.PROJECT}:latest"
+      name      = "${var.PROJECT}-landing-ecr"
+      image     = "${var.AWS_ACCOUNT_ID}.dkr.ecr.${var.AWS_REGION}.amazonaws.com/${var.PROJECT}:6b8cea5"
       essential = true
       portMappings = [
         {
@@ -135,10 +169,51 @@ resource "aws_ecs_task_definition" "task_def" {
 }
 
 # ECS Service
-resource "aws_ecs_service" "ecs_service" {
-  name            = "your_service_name"
+resource "aws_ecs_service" "foododo_terraform_landing_fargate_service" {
+  name            = "${var.PROJECT}-terraform-landing-fargate"
   cluster         = aws_ecs_cluster.ecs_cluster.id
-  task_definition = aws_ecs_task_definition.task_def.arn
+  task_definition = aws_ecs_task_definition.foododo_terraform_landing_fargate.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = var.SubnetIds
+    assign_public_ip = true
+    security_groups  = [aws_security_group.ecs_security_group.id]
+  }
+}
+
+
+# Task Definition
+resource "aws_ecs_task_definition" "foododo_landing_fargate" {
+  family                   = "${var.PROJECT}-landing-fargate"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "${var.PROJECT}-landing-ecr"
+      image     = "${var.AWS_ACCOUNT_ID}.dkr.ecr.${var.AWS_REGION}.amazonaws.com/foododo:landing"
+      essential = true
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        }
+      ]
+    }
+  ])
+}
+
+# ECS Service
+resource "aws_ecs_service" "foododo_landing_fargate_service" {
+  name            = "${var.PROJECT}-landing-fargate"
+  cluster         = aws_ecs_cluster.ecs_cluster.id
+  task_definition = aws_ecs_task_definition.foododo_landing_fargate.arn
   desired_count   = 1
   launch_type     = "FARGATE"
 

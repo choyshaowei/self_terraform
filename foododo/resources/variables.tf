@@ -33,10 +33,13 @@ variable "GITHUB_TOKEN" {
   sensitive   = true
 }
 
-variable "env_vars" {
+locals {
   description = "Environment variables"
-  type        = map(string)
-  default     = {}
+  CODEBUILD_ENV_VARS = {
+    AWS_REGION     = var.AWS_REGION
+    AWS_ACCOUNT_ID = var.AWS_ACCOUNT_ID
+    PROJECT        = "${var.PROJECT}"
+  }
 }
 
 variable "ECS_CLUSTER_NAME" {
