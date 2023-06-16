@@ -28,7 +28,7 @@ resource "aws_codepipeline" "pipeline" {
     location = aws_s3_bucket.foododo.bucket
     type     = "S3"
   }
-  # #  Source using codestar connection
+  #  Source using codestar connection
   # stage {
   #   name = "Source"
   #   action {

@@ -1,6 +1,10 @@
 # ECS
+data "aws_ssm_parameter" "LatestECSOptimizedAMI" {
+  name = "/aws/service/ecs/optimized-ami/amazon-linux-2023/arm64/recommended/image_id"
+}
+
 resource "aws_ecs_cluster" "ecs_cluster" {
-  name = var.ECSClusterName
+  name = var.ECS_CLUSTER_NAME
 
   setting {
     name  = "containerInsights"
@@ -12,13 +16,17 @@ resource "aws_ecs_cluster" "ecs_cluster" {
       logging = "DEFAULT"
     }
   }
+}
 
-  capacity_providers = ["FARGATE", "FARGATE_SPOT", aws_ecs_capacity_provider.ec2_capacity_provider.name]
+resource "aws_ecs_cluster_capacity_providers" "example" {
+  cluster_name = var.ECS_CLUSTER_NAME
+
+  capacity_providers = ["FARGATE"]
 
   default_capacity_provider_strategy {
-    capacity_provider = aws_ecs_capacity_provider.ec2_capacity_provider.name
-    weight            = 1
-    base              = 0
+    base              = 1
+    weight            = 100
+    capacity_provider = "FARGATE"
   }
 }
 
@@ -44,13 +52,13 @@ resource "aws_autoscaling_group" "ecs_auto_scaling_group" {
   vpc_zone_identifier = var.SubnetIds
   tag {
     key                 = "Name"
-    value               = "ECS Instance - ${var.ECSClusterName}"
+    value               = "ECS Instance - ${var.ECS_CLUSTER_NAME}"
     propagate_at_launch = true
   }
 }
 
 resource "aws_ecs_capacity_provider" "ec2_capacity_provider" {
-  name = "${var.ECSClusterName}CapacityProvider"
+  name = "${var.ECS_CLUSTER_NAME}CapacityProvider"
 
   auto_scaling_group_provider {
     auto_scaling_group_arn = aws_autoscaling_group.ecs_auto_scaling_group.arn
@@ -67,10 +75,12 @@ resource "aws_ecs_capacity_provider" "ec2_capacity_provider" {
 }
 
 # Security Group
-resource "aws_security_group" "your_security_group" {
-  name        = "your_security_group"
+resource "aws_security_group" "ecs_security_group" {
+  name        = "ecs_security_group"
   description = "Allow TLS inbound traffic"
-  vpc_id      = var.VpcId
+  vpc_id      = aws_vpc.foododo.id
+
+  depends_on = [aws_vpc.foododo]
 
   ingress {
     description = "TLS from VPC"
@@ -135,7 +145,7 @@ resource "aws_ecs_service" "ecs_service" {
   network_configuration {
     subnets          = var.SubnetIds
     assign_public_ip = true
-    security_groups  = [aws_security_group.your_security_group.id]
+    security_groups  = [aws_security_group.ecs_security_group.id]
   }
 }
 
