@@ -155,7 +155,7 @@ resource "aws_ecs_task_definition" "foododo_terraform_landing_fargate" {
   container_definitions = jsonencode([
     {
       name      = "${var.PROJECT}-landing-ecr"
-      image     = "${var.AWS_ACCOUNT_ID}.dkr.ecr.${var.AWS_REGION}.amazonaws.com/${var.PROJECT}:6b8cea5"
+      image     = "${var.AWS_ACCOUNT_ID}.dkr.ecr.${var.AWS_REGION}.amazonaws.com/${var.PROJECT}:latest"
       essential = true
       portMappings = [
         {
@@ -184,45 +184,45 @@ resource "aws_ecs_service" "foododo_terraform_landing_fargate_service" {
 }
 
 
-# Task Definition
-resource "aws_ecs_task_definition" "foododo_landing_fargate" {
-  family                   = "${var.PROJECT}-landing-fargate"
-  network_mode             = "awsvpc"
-  requires_compatibilities = ["FARGATE"]
-  cpu                      = "512"
-  memory                   = "1024"
-  execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+# # Task Definition
+# resource "aws_ecs_task_definition" "foododo_landing_fargate" {
+#   family                   = "${var.PROJECT}-landing-fargate"
+#   network_mode             = "awsvpc"
+#   requires_compatibilities = ["FARGATE"]
+#   cpu                      = "512"
+#   memory                   = "1024"
+#   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
 
-  container_definitions = jsonencode([
-    {
-      name      = "${var.PROJECT}-landing-ecr"
-      image     = "${var.AWS_ACCOUNT_ID}.dkr.ecr.${var.AWS_REGION}.amazonaws.com/foododo:landing"
-      essential = true
-      portMappings = [
-        {
-          containerPort = 80
-          hostPort      = 80
-          protocol      = "tcp"
-        }
-      ]
-    }
-  ])
-}
+#   container_definitions = jsonencode([
+#     {
+#       name      = "${var.PROJECT}-landing-ecr"
+#       image     = "${var.AWS_ACCOUNT_ID}.dkr.ecr.${var.AWS_REGION}.amazonaws.com/foododo:landing"
+#       essential = true
+#       portMappings = [
+#         {
+#           containerPort = 80
+#           hostPort      = 80
+#           protocol      = "tcp"
+#         }
+#       ]
+#     }
+#   ])
+# }
 
-# ECS Service
-resource "aws_ecs_service" "foododo_landing_fargate_service" {
-  name            = "${var.PROJECT}-landing-fargate"
-  cluster         = aws_ecs_cluster.ecs_cluster.id
-  task_definition = aws_ecs_task_definition.foododo_landing_fargate.arn
-  desired_count   = 1
-  launch_type     = "FARGATE"
+# # ECS Service
+# resource "aws_ecs_service" "foododo_landing_fargate_service" {
+#   name            = "${var.PROJECT}-landing-fargate"
+#   cluster         = aws_ecs_cluster.ecs_cluster.id
+#   task_definition = aws_ecs_task_definition.foododo_landing_fargate.arn
+#   desired_count   = 1
+#   launch_type     = "FARGATE"
 
-  network_configuration {
-    subnets          = var.SubnetIds
-    assign_public_ip = true
-    security_groups  = [aws_security_group.ecs_security_group.id]
-  }
-}
+#   network_configuration {
+#     subnets          = var.SubnetIds
+#     assign_public_ip = true
+#     security_groups  = [aws_security_group.ecs_security_group.id]
+#   }
+# }
 
 output "ECSCluster" {
   description = "The created cluster."

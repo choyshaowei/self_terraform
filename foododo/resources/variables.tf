@@ -36,9 +36,10 @@ variable "GITHUB_TOKEN" {
 locals {
   description = "Environment variables"
   CODEBUILD_ENV_VARS = {
-    AWS_REGION     = var.AWS_REGION
-    AWS_ACCOUNT_ID = var.AWS_ACCOUNT_ID
-    PROJECT        = "${var.PROJECT}"
+    AWS_REGION       = var.AWS_REGION
+    AWS_ACCOUNT_ID   = var.AWS_ACCOUNT_ID
+    ECS_CLUSTER_NAME = var.ECS_CLUSTER_NAME
+    PROJECT          = "${var.PROJECT}"
   }
 }
 
@@ -60,7 +61,7 @@ variable "VpcId" {
 variable "SubnetIds" {
   description = "Optional - Specifies the comma-separated list of existing VPC Subnet IDs where ECS instances will run"
   type        = list(string)
-  default     = ["subnet-0436c70b64db6e16f"]
+  default     = ["subnet-01af3eb08ae779c8b"]
 }
 
 variable "UserData" {

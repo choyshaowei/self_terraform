@@ -82,22 +82,22 @@ resource "aws_codepipeline" "pipeline" {
     }
   }
 
-  stage {
-    name = "Deploy"
-    action {
-      name            = "Deploy"
-      category        = "Deploy"
-      owner           = "AWS"
-      provider        = "ECS"
-      input_artifacts = ["image_definitions"]
-      version         = "1"
-      configuration = {
-        ClusterName = aws_ecs_cluster.ecs_cluster.name
-        ServiceName = aws_ecs_service.foododo_terraform_landing_fargate_service.name
-        FileName    = "imagedefinitions.json"
-      }
-    }
-  }
+  # stage {
+  #   name = "Deploy"
+  #   action {
+  #     name            = "Deploy"
+  #     category        = "Deploy"
+  #     owner           = "AWS"
+  #     provider        = "ECS"
+  #     input_artifacts = ["build_output"]
+  #     version         = "1"
+  #     configuration = {
+  #       ClusterName = aws_ecs_cluster.ecs_cluster.name
+  #       ServiceName = aws_ecs_service.foododo_terraform_landing_fargate_service.name
+  #       FileName    = "image_definitions.json"
+  #     }
+  #   }
+  # }
 
 }
 
@@ -109,7 +109,8 @@ resource "aws_codebuild_project" "foododo" {
   build_timeout = "5"
 
   source {
-    type = "CODEPIPELINE"
+    type      = "CODEPIPELINE"
+    buildspec = file("${path.module}/buildspec/buildspec.yaml")
   }
 
   environment {
@@ -258,8 +259,17 @@ resource "aws_iam_role_policy" "codebuild" {
           "ecr:CompleteLayerUpload",
           "ecr:BatchCheckLayerAvailability",
           "ecr:BatchGetImage",
-          "ecr:GetDownloadUrlForLayer"
-        ]
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:GetRepositoryPolicy",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:DescribeImages",
+          "ecr:GetLifecyclePolicy",
+          "ecr:GetLifecyclePolicyPreview",
+          "ecr:ListTagsForResource",
+          "ecr:DescribeImageScanFindings",
+          "ecs:UpdateService",
+        ],
         Effect   = "Allow"
         Resource = "*"
       },
