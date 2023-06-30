@@ -75,3 +75,17 @@ variable "IamRoleInstanceProfile" {
   type        = string
   default     = "arn:aws:iam::640940679593:instance-profile/ecsInstanceRole"
 }
+
+variable "EksInstanceTypes" {
+  description = "Specifies the EksInstanceTypes"
+  type        = list(string)
+  default     = ["t4g.small"]
+}
+
+variable "EksAmiTypes" {
+  description = "Specifies the EksAmiTypes"
+  type        = string
+  default     = "AL2_ARM_64"
+}
+
+data "aws_availability_zones" "available" {}

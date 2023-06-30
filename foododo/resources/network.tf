@@ -22,7 +22,9 @@ resource "aws_internet_gateway" "igw" {
 # Subnet - Public 
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.foododo.id
-  cidr_block              = "10.0.1.0/24"
+  cidr_block              = "10.0.${count.index}.0/24"
+  count                   = length(data.aws_availability_zones.available.names)
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
   tags = {
@@ -47,15 +49,18 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
+  count          = length(aws_subnet.public)
+  subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
 }
 
 # Private
 # Subnet - Private 
 resource "aws_subnet" "private" {
-  vpc_id     = aws_vpc.foododo.id
-  cidr_block = "10.0.2.0/24"
+  vpc_id            = aws_vpc.foododo.id
+  cidr_block        = "10.0.${count.index + 100}.0/24"
+  count             = length(data.aws_availability_zones.available.names)
+  availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
     name       = "aws_subnet private"
@@ -65,6 +70,7 @@ resource "aws_subnet" "private" {
 
 # NAT gateway - Private subnet
 resource "aws_eip" "nat" {
+  count  = length(aws_subnet.public)
   domain = "vpc"
 
   tags = {
@@ -74,8 +80,9 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "nat" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public.id
+  count         = length(aws_subnet.public)
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
 
   tags = {
     name       = "aws_nat_gateway nat"
@@ -83,22 +90,25 @@ resource "aws_nat_gateway" "nat" {
   }
 }
 
+
 # Route tables - Private
 resource "aws_route_table" "private" {
+  count  = length(aws_nat_gateway.nat)
   vpc_id = aws_vpc.foododo.id
 
   route {
     cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.nat.id
+    nat_gateway_id = aws_nat_gateway.nat[count.index].id
   }
 
   tags = {
-    name       = "aws_route_table private"
+    name       = "aws_route_table private ${count.index}"
     managed_by = "terraform"
   }
 }
 
 resource "aws_route_table_association" "private" {
-  subnet_id      = aws_subnet.private.id
-  route_table_id = aws_route_table.private.id
+  count          = length(aws_subnet.private)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
 }

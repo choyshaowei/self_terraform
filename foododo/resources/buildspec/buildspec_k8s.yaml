@@ -1,0 +1,50 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+      - echo Installing app dependencies...
+      - curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.17.11/2020-09-18/bin/linux/amd64/kubectl
+      - chmod +x ./kubectl
+      - mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$PATH:$HOME/bin
+      - echo 'export PATH=$PATH:$HOME/bin' >> ~/.zshrc
+      - . ~/.zshrc
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+      - echo Logging in to Amazon EKS...
+      - TEMP_ROLE=$(aws sts assume-role --role-arn $ASSUME_ROLE_ARN --role-session-name test)
+      - export TEMP_ROLE
+      - export AWS_ACCESS_KEY_ID=$(echo "${TEMP_ROLE}" | jq -r '.Credentials.AccessKeyId')
+      - export AWS_SECRET_ACCESS_KEY=$(echo "${TEMP_ROLE}" | jq -r '.Credentials.SecretAccessKey')
+      - export AWS_SESSION_TOKEN=$(echo "${TEMP_ROLE}" | jq -r '.Credentials.SessionToken')
+      - aws eks --region $AWS_REGION update-kubeconfig --name $AWS_CLUSTER_NAME #--role-arn $ASSUME_ROLE_ARN
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$IMAGE_NAME
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=${COMMIT_HASH:=latest}
+  build:
+    commands:
+      - echo Deploy started on `date`
+      - docker pull $REPOSITORY_URI:$IMAGE_TAG
+      - echo Change directory to source
+      - cd $CODEBUILD_SRC_DIR
+      - echo Push the latest image to cluster
+      - echo '{"spec":{"template":{"spec":{"containers":[{"name":"<CONTAINER_NAME>","image":"<REPOSITORY_URI>:<IMAGE_TAG>"}]}}}}' > patch-file.json
+      - sed -i "s|<CONTAINER_NAME>|$CONTAINER_NAME|g" patch-file.json
+      - sed -i "s|<REPOSITORY_URI>|$REPOSITORY_URI|g" patch-file.json
+      - sed -i "s|<IMAGE_TAG>|$IMAGE_TAG|g" patch-file.json
+      - kubectl patch $OBJECT_TYPE $OBJECT_NAME --patch "$(cat patch-file.json)" -n $NAMESPACE
+      - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:$ENVIRONMENT_TYPE-$IMAGE_TAG
+      - docker tag $REPOSITORY_URI:$IMAGE_TAG $REPOSITORY_URI:$ENVIRONMENT_TYPE-latest
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Push tag for the Docker images...
+      - unset AWS_ACCESS_KEY_ID
+      - unset AWS_SESSION_TOKEN
+      - unset AWS_SECRET_ACCESS_KEY
+      - docker push $REPOSITORY_URI:$ENVIRONMENT_TYPE-$IMAGE_TAG
+      - docker push $REPOSITORY_URI:$ENVIRONMENT_TYPE-latest
+artifacts:
+    files: patch-file.json

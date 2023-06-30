@@ -82,6 +82,23 @@ resource "aws_codepipeline" "pipeline" {
     }
   }
 
+  stage {
+    name = "Deploy to K8s cluster"
+
+    action {
+      name             = "Deploy"
+      category         = "Build"
+      owner            = "AWS"
+      provider         = "CodeBuild"
+      input_artifacts  = ["source_output"]
+      output_artifacts = ["build_output", "image_definitions"]
+      version          = "1"
+      configuration = {
+        ProjectName = aws_codebuild_project.k8s.name
+      }
+    }
+  }
+
   # stage {
   #   name = "Deploy"
   #   action {
@@ -125,6 +142,39 @@ resource "aws_codebuild_project" "foododo" {
         name  = environment_variable.key
         value = environment_variable.value
       }
+    }
+  }
+
+  artifacts {
+    type = "CODEPIPELINE"
+  }
+}
+
+# Deploy to k8s
+resource "aws_codebuild_project" "k8s" {
+  name          = "foododo-terraform"
+  description   = "foododo-terraform"
+  service_role  = aws_iam_role.codebuild.arn
+  build_timeout = "5"
+
+  source {
+    type      = "CODEPIPELINE"
+    buildspec = file("${path.module}/buildspec/buildspec_k8s.yaml")
+  }
+
+  environment {
+    compute_type                = "BUILD_GENERAL1_SMALL"
+    image                       = "aws/codebuild/standard:5.0"
+    type                        = "LINUX_CONTAINER"
+    privileged_mode             = true
+    image_pull_credentials_type = "CODEBUILD"
+  }
+
+  dynamic "environment_variable" {
+    for_each = local.CODEBUILD_ENV_VARS
+    content {
+      name  = environment_variable.key
+      value = environment_variable.value
     }
   }
 
@@ -276,4 +326,3 @@ resource "aws_iam_role_policy" "codebuild" {
     ]
   })
 }
-
