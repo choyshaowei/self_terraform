@@ -39,6 +39,8 @@ locals {
     AWS_REGION       = var.AWS_REGION
     AWS_ACCOUNT_ID   = var.AWS_ACCOUNT_ID
     ECS_CLUSTER_NAME = var.ECS_CLUSTER_NAME
+    EKS_CLUSTER_NAME = var.EKS_CLUSTER_NAME
+    ASSUME_ROLE_ARN  = var.ASSUME_ROLE_ARN
     PROJECT          = "${var.PROJECT}"
   }
 }
@@ -47,7 +49,14 @@ variable "ECS_CLUSTER_NAME" {
   description = "Specifies the ECS Cluster Name with which the resources would be associated"
   type        = string
 }
-
+variable "EKS_CLUSTER_NAME" {
+  description = "Specifies the EKS Cluster Name with which the resources would be associated"
+  type        = string
+}
+variable "ASSUME_ROLE_ARN" {
+  description = "Specifies ASSUME_ROLE_ARN for EKS"
+  type        = string
+}
 variable "VpcId" {
   description = "Optional - Specifies the ID of an existing VPC in which to launch your container instances"
   type        = string

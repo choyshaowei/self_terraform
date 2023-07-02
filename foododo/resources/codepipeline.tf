@@ -16,10 +16,11 @@ resource "aws_s3_bucket_acl" "example" {
   acl        = "private"
 }
 
-resource "aws_codestarconnections_connection" "github" {
-  name          = "personal-github"
-  provider_type = "GitHub"
-}
+# resource "aws_codestarconnections_connection" "github" {
+#   name          = "personal-github"
+#   provider_type = "GitHub"
+# }
+
 resource "aws_codepipeline" "pipeline" {
   name     = "foododo-terrafrom-pipeline"
   role_arn = aws_iam_role.pipeline.arn
@@ -83,7 +84,7 @@ resource "aws_codepipeline" "pipeline" {
   }
 
   stage {
-    name = "Deploy to K8s cluster"
+    name = "Deploy"
 
     action {
       name             = "Deploy"
@@ -91,43 +92,25 @@ resource "aws_codepipeline" "pipeline" {
       owner            = "AWS"
       provider         = "CodeBuild"
       input_artifacts  = ["source_output"]
-      output_artifacts = ["build_output", "image_definitions"]
+      output_artifacts = ["deploy_output"]
       version          = "1"
       configuration = {
         ProjectName = aws_codebuild_project.k8s.name
       }
     }
   }
-
-  # stage {
-  #   name = "Deploy"
-  #   action {
-  #     name            = "Deploy"
-  #     category        = "Deploy"
-  #     owner           = "AWS"
-  #     provider        = "ECS"
-  #     input_artifacts = ["build_output"]
-  #     version         = "1"
-  #     configuration = {
-  #       ClusterName = aws_ecs_cluster.ecs_cluster.name
-  #       ServiceName = aws_ecs_service.foododo_terraform_landing_fargate_service.name
-  #       FileName    = "image_definitions.json"
-  #     }
-  #   }
-  # }
-
 }
 
 # Build and deploy to ECR as a container
 resource "aws_codebuild_project" "foododo" {
-  name          = "foododo-terraform"
-  description   = "foododo-terraform"
+  name          = "foododo-terraform-build-deploy-ECR"
+  description   = "foododo-terraform-build-deploy-ECR"
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = "5"
 
   source {
     type      = "CODEPIPELINE"
-    buildspec = file("${path.module}/buildspec/buildspec.yaml")
+    buildspec = file("${path.module}/buildspec/buildspec_codebuild.yaml")
   }
 
   environment {
@@ -152,14 +135,14 @@ resource "aws_codebuild_project" "foododo" {
 
 # Deploy to k8s
 resource "aws_codebuild_project" "k8s" {
-  name          = "foododo-terraform"
-  description   = "foododo-terraform"
+  name          = "foododo-terraform-build-deploy-EKS"
+  description   = "foododo-terraform-build-deploy-EKS"
   service_role  = aws_iam_role.codebuild.arn
   build_timeout = "5"
 
   source {
     type      = "CODEPIPELINE"
-    buildspec = file("${path.module}/buildspec/buildspec_k8s.yaml")
+    buildspec = file("${path.module}/buildspec/buildspec_eks.yaml")
   }
 
   environment {
@@ -168,21 +151,20 @@ resource "aws_codebuild_project" "k8s" {
     type                        = "LINUX_CONTAINER"
     privileged_mode             = true
     image_pull_credentials_type = "CODEBUILD"
-  }
-
-  dynamic "environment_variable" {
-    for_each = local.CODEBUILD_ENV_VARS
-    content {
-      name  = environment_variable.key
-      value = environment_variable.value
+    dynamic "environment_variable" {
+      for_each = local.CODEBUILD_ENV_VARS
+      content {
+        name  = environment_variable.key
+        value = environment_variable.value
+      }
     }
   }
-
   artifacts {
     type = "CODEPIPELINE"
   }
 }
 
+# Codepipieline roles
 resource "aws_iam_role" "pipeline" {
   name = "aws_iam_role_pipeline"
 
@@ -193,12 +175,16 @@ resource "aws_iam_role" "pipeline" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Service = "codepipeline.amazonaws.com"
+          Service = [
+            "codepipeline.amazonaws.com",
+            "codebuild.amazonaws.com"
+          ]
         }
       },
     ]
   })
 }
+
 resource "aws_iam_role_policy" "pipeline" {
   name = "aws_iam_role_policy_pipeline"
   role = aws_iam_role.pipeline.id
@@ -221,11 +207,30 @@ resource "aws_iam_role_policy" "pipeline" {
   })
 }
 
-# Attach necessary policies to CodePipeline IAM role
+resource "aws_iam_role_policy" "codepipeline_kubectl_policy" {
+  name = "aws_iam_role_policy_codepipeline_kubectl_policy"
+  role = aws_iam_role.pipeline.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = [
+          "eks:DescribeCluster"
+        ],
+        Resource = "*",
+        Effect   = "Allow"
+      },
+    ]
+  })
+}
+
 resource "aws_iam_role_policy_attachment" "pipeline" {
   policy_arn = "arn:aws:iam::aws:policy/AWSCodeStarFullAccess"
   role       = aws_iam_role.pipeline.name
 }
+
+# Codebuild EKS roles
 resource "aws_iam_role" "codebuild" {
   name = "aws_iam_role_codebuild"
 
@@ -236,51 +241,12 @@ resource "aws_iam_role" "codebuild" {
         Action = "sts:AssumeRole"
         Effect = "Allow"
         Principal = {
-          Service = "codebuild.amazonaws.com"
+          Service = [
+            "codepipeline.amazonaws.com",
+            "codebuild.amazonaws.com"
+          ],
+          AWS : "arn:aws:iam::${var.AWS_ACCOUNT_ID}:root"
         }
-      },
-    ]
-  })
-}
-
-resource "aws_iam_role" "ecr_role" {
-  name = "ecrRole"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "ec2.amazonaws.com"
-        }
-      },
-    ]
-  })
-}
-
-
-# ECR
-resource "aws_iam_role_policy" "ecr_policy" {
-  name = "ecrPolicy"
-  role = aws_iam_role.ecr_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = [
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
-          "ecr:BatchCheckLayerAvailability",
-          "ecr:BatchGetImage",
-          "ecr:GetDownloadUrlForLayer"
-        ]
-        Effect   = "Allow"
-        Resource = "*"
       },
     ]
   })
@@ -292,9 +258,10 @@ resource "aws_iam_role_policy" "codebuild" {
   role = aws_iam_role.codebuild.id
 
   policy = jsonencode({
-    Version = "2012-10-17"
+    Version = "2012-10-17",
     Statement = [
       {
+        Effect = "Allow",
         Action = [
           "s3:GetObject",
           "s3:PutObject",
@@ -303,24 +270,75 @@ resource "aws_iam_role_policy" "codebuild" {
           "logs:CreateLogStream",
           "logs:PutLogEvents",
           "ecr:GetAuthorizationToken",
-          "ecr:PutImage",
-          "ecr:InitiateLayerUpload",
-          "ecr:UploadLayerPart",
-          "ecr:CompleteLayerUpload",
           "ecr:BatchCheckLayerAvailability",
-          "ecr:BatchGetImage",
           "ecr:GetDownloadUrlForLayer",
           "ecr:GetRepositoryPolicy",
           "ecr:DescribeRepositories",
           "ecr:ListImages",
           "ecr:DescribeImages",
+          "ecr:BatchGetImage",
           "ecr:GetLifecyclePolicy",
           "ecr:GetLifecyclePolicyPreview",
           "ecr:ListTagsForResource",
           "ecr:DescribeImageScanFindings",
-          "ecs:UpdateService",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+          "eks:DescribeCluster",
+          "sts:AssumeRole"
         ],
-        Effect   = "Allow"
+        "Resource" : "*"
+      }
+    ]
+  })
+}
+
+
+# Users
+resource "aws_iam_user" "codepipeline_eks_temp" {
+  name = "aws_iam_user_codepipeline_eks_temp"
+  path = "/system/"
+}
+
+resource "aws_iam_user_policy" "temp" {
+  name = "aws_iam_user_policy_temp"
+  user = aws_iam_user.codepipeline_eks_temp.name
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket",
+          "s3:GetBucketAcl",
+          "s3:GetBucketLocation",
+          "s3:GetObject",
+          "s3:GetObjectVersion",
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:GetRepositoryPolicy",
+          "ecr:DescribeRepositories",
+          "ecr:ListImages",
+          "ecr:DescribeImages",
+          "ecr:BatchGetImage",
+          "ecr:GetLifecyclePolicy",
+          "ecr:GetLifecyclePolicyPreview",
+          "ecr:ListTagsForResource",
+          "ecr:DescribeImageScanFindings",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+          "sts:AssumeRole"
+        ],
+        Effect   = "Allow",
         Resource = "*"
       },
     ]
