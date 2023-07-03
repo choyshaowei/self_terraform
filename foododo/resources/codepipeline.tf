@@ -285,7 +285,7 @@ resource "aws_iam_role_policy" "codebuild" {
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload",
           "ecr:PutImage",
-          "eks:DescribeCluster",
+          "eks:*",
           "sts:AssumeRole"
         ],
         "Resource" : "*"

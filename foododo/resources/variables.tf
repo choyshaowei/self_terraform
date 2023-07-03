@@ -27,6 +27,12 @@ variable "PROJECT" {
   sensitive   = true
 }
 
+variable "ENVIRONMENT_TYPE" {
+  description = "Environment type"
+  type        = string
+  sensitive   = true
+}
+
 variable "GITHUB_TOKEN" {
   description = "GitHub token"
   type        = string
@@ -41,7 +47,13 @@ locals {
     ECS_CLUSTER_NAME = var.ECS_CLUSTER_NAME
     EKS_CLUSTER_NAME = var.EKS_CLUSTER_NAME
     ASSUME_ROLE_ARN  = var.ASSUME_ROLE_ARN
+    ENVIRONMENT_TYPE = var.ENVIRONMENT_TYPE
     PROJECT          = "${var.PROJECT}"
+    IMAGE_NAME       = "${var.PROJECT}"
+    OBJECT_TYPE      = "deployment"
+    OBJECT_NAME      = var.EKS_CLUSTER_NAME
+    NAMESPACE        = "default"
+    CONTAINER_NAME   = "foododo-foododo-landing"
   }
 }
 
@@ -88,13 +100,13 @@ variable "IamRoleInstanceProfile" {
 variable "EksInstanceTypes" {
   description = "Specifies the EksInstanceTypes"
   type        = list(string)
-  default     = ["t4g.small"]
+  default     = ["t3.small"]
 }
 
 variable "EksAmiTypes" {
   description = "Specifies the EksAmiTypes"
   type        = string
-  default     = "AL2_ARM_64"
+  default     = "AL2_x86_64"
 }
 
 data "aws_availability_zones" "available" {}
