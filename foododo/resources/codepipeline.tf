@@ -22,8 +22,9 @@ resource "aws_s3_bucket_acl" "example" {
 # }
 
 resource "aws_codepipeline" "pipeline" {
-  name     = "foododo-terrafrom-pipeline"
-  role_arn = aws_iam_role.pipeline.arn
+  name       = "foododo-terrafrom-pipeline"
+  role_arn   = aws_iam_role.pipeline.arn
+  depends_on = [aws_eks_cluster.foododo]
 
   artifact_store {
     location = aws_s3_bucket.foododo.bucket
